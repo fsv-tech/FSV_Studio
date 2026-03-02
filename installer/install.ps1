@@ -8,10 +8,6 @@ $ErrorActionPreference = "Stop"
 # FIX BROKEN SSL ENV VARIABLES (PostgreSQL bug)
 # --------------------------------------------
 
-[Environment]::SetEnvironmentVariable("SSL_CERT_FILE", $null, "Machine")
-[Environment]::SetEnvironmentVariable("REQUESTS_CA_BUNDLE", $null, "Machine")
-[Environment]::SetEnvironmentVariable("CURL_CA_BUNDLE", $null, "Machine")
-
 Remove-Item Env:SSL_CERT_FILE -ErrorAction SilentlyContinue
 Remove-Item Env:REQUESTS_CA_BUNDLE -ErrorAction SilentlyContinue
 Remove-Item Env:CURL_CA_BUNDLE -ErrorAction SilentlyContinue
@@ -75,21 +71,19 @@ else {
 
 Write-Step "Installing dependencies"
 
-& $VenvPython -m pip install --upgrade pip --certifi
-
+& $VenvPython -m pip install --upgrade pip
 & $VenvPython -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 & $VenvPython -m pip install diffusers transformers accelerate huggingface_hub safetensors opencv-python imageio ffmpeg-python
 
 Write-OK "Dependencies installed"
 
 # ============================================
-# STEP 4 — DOWNLOAD ONLY REQUIRED MODEL FILES
+# STEP 4 — DOWNLOAD REQUIRED MODEL ONLY
 # ============================================
 
 Write-Step "Checking LTX-2 distilled FP8 model"
 
 New-Item -ItemType Directory -Force -Path $ModelsDir | Out-Null
-
 $MainModel = Join-Path $ModelsDir "ltx-2-19b-distilled-fp8.safetensors"
 
 if (Test-Path $MainModel) {
@@ -116,33 +110,34 @@ print('MODEL DOWNLOAD COMPLETE')
 }
 
 # ============================================
-# STEP 5 — INSTALL FFMPEG
+# STEP 5 — INSTALL FFMPEG (LOCAL, NO ADMIN)
 # ============================================
 
 Write-Step "Checking FFmpeg"
 
-if (!(Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
-    Write-Host "  Installing FFmpeg..."
+$LocalFFmpegDir = Join-Path $RootDir "ffmpeg"
+$LocalFFmpegBin = Join-Path $LocalFFmpegDir "bin\ffmpeg.exe"
+
+if (Test-Path $LocalFFmpegBin) {
+    $env:Path = "$LocalFFmpegDir\bin;$env:Path"
+    Write-OK "FFmpeg already installed (local)"
+}
+else {
+    Write-Host "  Installing FFmpeg locally..."
 
     $ffmpegZip = "$env:TEMP\ffmpeg.zip"
-    $ffmpegDir = "C:\ffmpeg"
 
     Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile $ffmpegZip
+
     Expand-Archive $ffmpegZip -DestinationPath $env:TEMP -Force
 
     $extracted = Get-ChildItem "$env:TEMP" | Where-Object { $_.Name -like "ffmpeg-*essentials*" }
 
-    Move-Item "$($extracted.FullName)" $ffmpegDir -Force
+    Move-Item "$($extracted.FullName)" $LocalFFmpegDir -Force
 
-    $envPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
-    if ($envPath -notlike "*C:\ffmpeg\bin*") {
-        [Environment]::SetEnvironmentVariable("Path", $envPath + ";C:\ffmpeg\bin", "Machine")
-    }
+    $env:Path = "$LocalFFmpegDir\bin;$env:Path"
 
-    Write-OK "FFmpeg installed"
-}
-else {
-    Write-OK "FFmpeg already installed"
+    Write-OK "FFmpeg installed locally"
 }
 
 # ============================================
@@ -160,7 +155,8 @@ $ConfigFile = Join-Path $ConfigDir "config.json"
 {
     "model_path": "$ModelsDir\ltx-2-19b-distilled-fp8.safetensors",
     "device": "cuda",
-    "precision": "fp8"
+    "precision": "fp16",
+    "cpu_offload": true
 }
 "@ | Out-File -Encoding UTF8 $ConfigFile
 
