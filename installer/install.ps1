@@ -1,196 +1,178 @@
-# ============================================================
-# FSV Studio - Full Automatic Installer (Stable Build)
-# ============================================================
+# ============================================
+# FSV Studio - First-Time Setup
+# ============================================
 
 $ErrorActionPreference = "Stop"
-$Host.UI.RawUI.WindowTitle = "FSV Studio Installer"
 
-$ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectDir = Split-Path -Parent $ScriptDir
-$EngineDir  = Join-Path $ProjectDir "engine"
-$ModelsDir  = Join-Path $ProjectDir "models\ltx-2"
-$BinDir     = Join-Path $ProjectDir "bin"
-$ConfigFile = Join-Path $ProjectDir "config\config.json"
+# --------------------------------------------
+# FIX BROKEN SSL ENV VARIABLES (PostgreSQL bug)
+# --------------------------------------------
+
+[Environment]::SetEnvironmentVariable("SSL_CERT_FILE", $null, "Machine")
+[Environment]::SetEnvironmentVariable("REQUESTS_CA_BUNDLE", $null, "Machine")
+[Environment]::SetEnvironmentVariable("CURL_CA_BUNDLE", $null, "Machine")
+
+Remove-Item Env:SSL_CERT_FILE -ErrorAction SilentlyContinue
+Remove-Item Env:REQUESTS_CA_BUNDLE -ErrorAction SilentlyContinue
+Remove-Item Env:CURL_CA_BUNDLE -ErrorAction SilentlyContinue
+
+# --------------------------------------------
+# Paths
+# --------------------------------------------
+
+$RootDir    = Split-Path -Parent $PSScriptRoot
+$EngineDir  = Join-Path $RootDir "engine"
+$ModelsDir  = Join-Path $RootDir "models\ltx-2"
 $VenvDir    = Join-Path $EngineDir ".venv"
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
-$VenvPip    = Join-Path $VenvDir "Scripts\pip.exe"
 
-$ModelRepo = "Lightricks/LTX-2"
+function Write-Step($msg) {
+    Write-Host ""
+    Write-Host "  >> $msg"
+}
 
-function Write-Step($msg) { Write-Host ""; Write-Host "  >> $msg" -ForegroundColor Cyan }
-function Write-OK($msg)   { Write-Host "  OK   $msg" -ForegroundColor Green }
-function Write-Warn($msg) { Write-Host "  WARN  $msg" -ForegroundColor Yellow }
-function Write-Fail($msg) { Write-Host "  FAIL  $msg" -ForegroundColor Red }
+function Write-OK($msg) {
+    Write-Host "  OK   $msg"
+}
 
-Clear-Host
-Write-Host ""
-Write-Host "  ============================================"
-Write-Host "    FSV Studio - Full Automatic Setup"
-Write-Host "  ============================================"
-Write-Host ""
-Read-Host "  Press Enter to start"
+function Write-Warn($msg) {
+    Write-Host "  WARN  $msg"
+}
 
-# ============================================================
-# STEP 1 — PYTHON CHECK
-# ============================================================
+# ============================================
+# STEP 1 — CHECK PYTHON
+# ============================================
 
 Write-Step "Checking Python"
 
 try {
-    $ver = & python --version 2>&1
-    if ($LASTEXITCODE -ne 0) { throw }
-    Write-OK "Using $ver"
+    $pyVersion = python --version
+    Write-OK "Using $pyVersion"
 }
 catch {
-    Write-Fail "Python not found in PATH"
-    exit 1
+    Write-Host "  FAIL  Python not found in PATH."
+    pause
+    exit
 }
 
-# ============================================================
+# ============================================
 # STEP 2 — CREATE VENV
-# ============================================================
+# ============================================
 
 Write-Step "Creating virtual environment"
 
-if (-not (Test-Path $VenvDir)) {
-    & python -m venv $VenvDir
+if (!(Test-Path $VenvPython)) {
+    python -m venv $VenvDir
     Write-OK "Virtual environment created"
 }
 else {
     Write-OK "Virtual environment already exists"
 }
 
-& $VenvPython -m pip install --upgrade pip
-
-# ============================================================
+# ============================================
 # STEP 3 — INSTALL DEPENDENCIES
-# ============================================================
+# ============================================
 
-Write-Step "Installing PyTorch (CPU build)"
+Write-Step "Installing dependencies"
 
-& $VenvPip install torch torchvision torchaudio
+& $VenvPython -m pip install --upgrade pip --certifi
 
-Write-Step "Installing AI dependencies"
-
-$deps = @(
-    "diffusers",
-    "transformers",
-    "accelerate",
-    "sentencepiece",
-    "protobuf",
-    "imageio",
-    "imageio-ffmpeg",
-    "numpy",
-    "Pillow",
-    "huggingface_hub"
-)
-
-foreach ($dep in $deps) {
-    Write-Host "  Installing $dep..."
-    & $VenvPip install $dep
-}
+& $VenvPython -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+& $VenvPython -m pip install diffusers transformers accelerate huggingface_hub safetensors opencv-python imageio ffmpeg-python
 
 Write-OK "Dependencies installed"
 
-# ============================================================
-# STEP 4 — DOWNLOAD LTX-2 MODEL
-# ============================================================
+# ============================================
+# STEP 4 — DOWNLOAD ONLY REQUIRED MODEL FILES
+# ============================================
 
-Write-Step "Checking LTX-2 model"
+Write-Step "Checking LTX-2 distilled FP8 model"
 
 New-Item -ItemType Directory -Force -Path $ModelsDir | Out-Null
-$existing = Get-ChildItem $ModelsDir -Filter "*.safetensors" -ErrorAction SilentlyContinue
 
-if ($existing -and $existing.Count -gt 0) {
+$MainModel = Join-Path $ModelsDir "ltx-2-19b-distilled-fp8.safetensors"
+
+if (Test-Path $MainModel) {
     Write-OK "Model already exists"
 }
 else {
-    Write-Host "  Downloading model (this may take 10–30 minutes)..."
+    Write-Host "  Downloading model (this may take time)..."
 
-    $tempPy = Join-Path $EngineDir "download_model.py"
-
-@"
+    & $VenvPython -c "
 from huggingface_hub import snapshot_download
-
 snapshot_download(
-    repo_id="$ModelRepo",
-    local_dir=r"$ModelsDir",
-    local_dir_use_symlinks=False
+    repo_id='Lightricks/LTX-2',
+    allow_patterns=[
+        'ltx-2-19b-distilled-fp8.safetensors',
+        '*.json',
+        'tokenizer*'
+    ],
+    local_dir=r'$ModelsDir'
 )
-
-print("MODEL DOWNLOAD COMPLETE")
-"@ | Set-Content $tempPy -Encoding UTF8
-
-    & $VenvPython $tempPy
-
-    Remove-Item $tempPy -Force
+print('MODEL DOWNLOAD COMPLETE')
+"
 
     Write-OK "Model downloaded"
 }
 
-# ============================================================
+# ============================================
 # STEP 5 — INSTALL FFMPEG
-# ============================================================
+# ============================================
 
 Write-Step "Checking FFmpeg"
 
-$ffmpegLocal = Join-Path $BinDir "ffmpeg.exe"
+if (!(Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+    Write-Host "  Installing FFmpeg..."
 
-if (Test-Path $ffmpegLocal) {
-    Write-OK "FFmpeg already installed"
+    $ffmpegZip = "$env:TEMP\ffmpeg.zip"
+    $ffmpegDir = "C:\ffmpeg"
+
+    Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile $ffmpegZip
+    Expand-Archive $ffmpegZip -DestinationPath $env:TEMP -Force
+
+    $extracted = Get-ChildItem "$env:TEMP" | Where-Object { $_.Name -like "ffmpeg-*essentials*" }
+
+    Move-Item "$($extracted.FullName)" $ffmpegDir -Force
+
+    $envPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    if ($envPath -notlike "*C:\ffmpeg\bin*") {
+        [Environment]::SetEnvironmentVariable("Path", $envPath + ";C:\ffmpeg\bin", "Machine")
+    }
+
+    Write-OK "FFmpeg installed"
 }
 else {
-    try {
-        New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
-        $zipPath = Join-Path $BinDir "ffmpeg.zip"
-
-        Write-Host "  Downloading FFmpeg..."
-        Invoke-WebRequest `
-            -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" `
-            -OutFile $zipPath
-
-        Expand-Archive -Path $zipPath -DestinationPath $BinDir -Force
-
-        $folder = Get-ChildItem $BinDir | Where-Object {
-            $_.PSIsContainer -and $_.Name -like "ffmpeg-*"
-        } | Select-Object -First 1
-
-        Move-Item "$($folder.FullName)\bin\ffmpeg.exe" $ffmpegLocal -Force
-
-        Remove-Item $zipPath -Force
-        Remove-Item $folder.FullName -Recurse -Force
-
-        Write-OK "FFmpeg installed"
-    }
-    catch {
-        Write-Warn "FFmpeg auto-install failed. Install manually from https://ffmpeg.org"
-    }
+    Write-OK "FFmpeg already installed"
 }
 
-# ============================================================
+# ============================================
 # STEP 6 — WRITE CONFIG
-# ============================================================
+# ============================================
 
-Write-Step "Writing configuration"
+Write-Step "Writing configuration file"
 
-New-Item -ItemType Directory -Force -Path (Split-Path $ConfigFile) | Out-Null
+$ConfigDir = Join-Path $RootDir "config"
+New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
 
-$config = @{
-    version    = "1.0.0"
-    pythonPath = $VenvPython
-    modelsDir  = $ModelsDir
-    outputsDir = (Join-Path $ProjectDir "jobs")
-    ffmpegPath = if (Test-Path $ffmpegLocal) { $ffmpegLocal } else { "ffmpeg" }
-    theme      = "light"
+$ConfigFile = Join-Path $ConfigDir "config.json"
+
+@"
+{
+    "model_path": "$ModelsDir\ltx-2-19b-distilled-fp8.safetensors",
+    "device": "cuda",
+    "precision": "fp8"
 }
+"@ | Out-File -Encoding UTF8 $ConfigFile
 
-$config | ConvertTo-Json -Depth 3 | Set-Content $ConfigFile -Encoding UTF8
+Write-OK "Config saved"
 
-Write-OK "Config written"
+# ============================================
+# DONE
+# ============================================
 
 Write-Host ""
-Write-Host "  ============================================" -ForegroundColor Green
-Write-Host "    INSTALL COMPLETE"
-Write-Host "  ============================================" -ForegroundColor Green
+Write-Host "============================================"
+Write-Host "  Setup complete!"
+Write-Host "============================================"
 Write-Host ""
-Read-Host "Press Enter to close"
+pause
