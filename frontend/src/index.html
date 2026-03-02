@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="nebula">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FSV Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles/app.css">
+</head>
+<body>
+
+  <!-- ══════════════ SETUP OVERLAY ══════════════════════════════════════════ -->
+  <div id="setup-overlay" class="setup-overlay hidden">
+    <div class="setup-card">
+      <div class="setup-wordmark">FSV Studio</div>
+      <div class="setup-headline">Setting up your environment</div>
+      <div class="setup-sub">This only happens once. It downloads Python, PyTorch, and the LTX-2 model (~14 GB).</div>
+      <div class="setup-bar"><div class="setup-bar-fill" id="setup-fill"></div></div>
+      <div class="setup-step-label" id="setup-step-label">Checking system...</div>
+      <div class="setup-log-box" id="setup-log"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════ TITLEBAR ═══════════════════════════════════════════════ -->
+  <header class="titlebar" id="titlebar">
+    <div class="titlebar-left">
+      <span class="wordmark">FSV Studio</span>
+      <div class="gpu-badge" id="gpu-badge">
+        <span class="gpu-dot" id="gpu-dot"></span>
+        <span class="gpu-label" id="gpu-label">Detecting GPU</span>
+      </div>
+    </div>
+
+    <nav class="titlebar-nav">
+      <button class="nav-btn active" data-panel="generate">Generate</button>
+      <button class="nav-btn" data-panel="queue">Queue</button>
+      <button class="nav-btn" data-panel="library">Library</button>
+      <button class="nav-btn" data-panel="projects">Projects</button>
+      <button class="nav-btn" data-panel="characters">Characters</button>
+      <button class="nav-btn" data-panel="diagnostics">Diagnostics</button>
+      <button class="nav-btn" data-panel="settings">Settings</button>
+    </nav>
+
+    <div class="titlebar-right">
+      <div class="theme-switcher">
+        <button class="theme-dot active" data-dot="nebula"   data-label="Nebula"   title="Nebula"></button>
+        <button class="theme-dot"        data-dot="obsidian" data-label="Obsidian" title="Obsidian"></button>
+        <button class="theme-dot"        data-dot="aurora"   data-label="Aurora"   title="Aurora"></button>
+        <button class="theme-dot"        data-dot="studio"   data-label="Studio"   title="Studio"></button>
+      </div>
+      <button class="win-btn" id="btn-min">&#8211;</button>
+      <button class="win-btn" id="btn-max">&#9633;</button>
+      <button class="win-btn win-close" id="btn-close">&#215;</button>
+    </div>
+  </header>
+
+  <!-- ══════════════ APP BODY ═══════════════════════════════════════════════ -->
+  <main class="app-main">
+
+    <!-- ═══ GENERATE ══════════════════════════════════════════════════════ -->
+    <section class="panel active" id="panel-generate">
+      <div class="gen-layout">
+
+        <!-- LEFT SIDEBAR — single unified scrollable card -->
+        <aside class="gen-sidebar">
+          <div class="sidebar-card">
+
+            <!-- Mode tabs -->
+            <div class="sidebar-section">
+              <div class="mode-tabs">
+                <button class="mode-tab active" data-mode="text">Text to video</button>
+                <button class="mode-tab" data-mode="image">Image to video</button>
+              </div>
+            </div>
+
+            <!-- Prompt -->
+            <div class="sidebar-section">
+              <div class="mode-pane active" id="mode-text">
+                <div class="field">
+                  <div class="prompt-wrap">
+                    <textarea id="prompt-input" class="textarea" rows="4"
+                      placeholder="Describe your video — lighting, motion, camera angle, mood..."></textarea>
+                    <div class="prompt-actions">
+                      <button class="prompt-char-btn" id="btn-inject-char" title="Insert character">
+                        <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="4.5" r="2.5" stroke="currentColor" stroke-width="1.4"/><path d="M2 12c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                      </button>
+                      <button class="prompt-char-btn" id="btn-random" title="Random prompt">
+                        <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M9 4l3 3-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="field-foot">
+                    <span class="char-count" id="char-count">0 / 500</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mode-pane" id="mode-image">
+                <div class="field">
+                  <div class="image-drop" id="image-drop">
+                    <div class="image-drop-body" id="image-drop-body">
+                      <div class="image-drop-title">Drop an image here</div>
+                      <div class="image-drop-hint">PNG or JPG — becomes the first frame</div>
+                      <button class="outline-btn" id="btn-browse">Browse files</button>
+                      <input type="file" id="image-file" accept="image/png,image/jpeg" hidden>
+                    </div>
+                    <img id="image-thumb" class="image-thumb hidden" alt="">
+                  </div>
+                </div>
+                <div class="field" style="margin-top:10px">
+                  <div class="field-label">Motion prompt <span class="field-opt">optional</span></div>
+                  <textarea id="image-prompt" class="textarea" rows="3"
+                    placeholder="Describe the motion you want..."></textarea>
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-divider"></div>
+
+            <!-- Negative prompt (collapsible) -->
+            <div class="sidebar-collapsible" id="card-negative">
+              <button class="sidebar-collapse-btn" data-target="card-negative">
+                <span class="field-label" style="text-transform:uppercase;letter-spacing:.1em">Negative prompt</span>
+                <span class="section-tag">optional</span>
+                <svg class="chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" style="margin-left:auto"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div class="sidebar-collapse-body">
+                <textarea id="neg-prompt" class="textarea" rows="2"
+                  placeholder="Things to avoid — blurry, watermark, text, low quality..."></textarea>
+              </div>
+            </div>
+
+            <div class="sidebar-divider"></div>
+
+            <!-- Style preset -->
+            <div class="sidebar-section">
+              <div class="field">
+                <div class="field-label">Style preset</div>
+                <div class="chip-group" id="preset-chips"></div>
+              </div>
+            </div>
+
+            <div class="sidebar-divider"></div>
+
+            <!-- Output -->
+            <div class="sidebar-section">
+              <div class="field">
+                <div class="field-label">Output name <span class="field-opt">optional</span></div>
+                <input type="text" class="text-input" id="output-name" placeholder="auto-generated if blank">
+              </div>
+              <div class="field" style="margin-top:10px">
+                <div class="field-label">Save to project</div>
+                <select class="select" id="save-to-project">
+                  <option value="">No project</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="sidebar-divider"></div>
+
+            <!-- Parameters -->
+            <div class="sidebar-section">
+              <div class="field">
+                <div class="field-label">Duration <span class="field-val" id="duration-val">8 seconds</span></div>
+                <input type="range" class="slider" id="duration" min="2" max="120" value="8" step="1">
+                <div class="slider-ends"><span>2s</span><span>2 min</span></div>
+              </div>
+              <div class="field-row" style="margin-top:10px">
+                <div class="field flex1">
+                  <div class="field-label">Resolution</div>
+                  <select class="select" id="resolution">
+                    <option value="512x512">512 × 512</option>
+                    <option value="768x512">768 × 512</option>
+                    <option value="512x768">512 × 768</option>
+                    <option value="768x768">768 × 768</option>
+                    <option value="1280x720" selected>1280 × 720 HD</option>
+                  </select>
+                </div>
+                <div class="field flex1">
+                  <div class="field-label">FPS</div>
+                  <select class="select" id="fps">
+                    <option value="12">12 fps</option>
+                    <option value="24" selected>24 fps</option>
+                    <option value="30">30 fps</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-divider"></div>
+
+            <!-- Advanced (collapsible) -->
+            <div class="sidebar-collapsible" id="card-advanced">
+              <button class="sidebar-collapse-btn" data-target="card-advanced">
+                <span class="field-label" style="text-transform:uppercase;letter-spacing:.1em">Advanced</span>
+                <svg class="chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" style="margin-left:auto"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div class="sidebar-collapse-body">
+                <div class="field">
+                  <div class="field-label">Guidance scale (CFG) <span class="field-val" id="cfg-val">7.5</span></div>
+                  <input type="range" class="slider" id="cfg-scale" min="1" max="20" value="7.5" step="0.5">
+                  <div class="slider-ends"><span>1 — creative</span><span>20 — strict</span></div>
+                </div>
+                <div class="field" style="margin-top:10px">
+                  <div class="field-label">Quality / steps</div>
+                  <select class="select" id="quality">
+                    <option value="draft">Draft — 10 steps</option>
+                    <option value="balanced" selected>Balanced — 20 steps</option>
+                    <option value="quality">Quality — 30 steps</option>
+                    <option value="ultra">Ultra — 50 steps</option>
+                  </select>
+                </div>
+                <div class="field" style="margin-top:10px">
+                  <div class="field-label">Seed <span class="field-opt">blank = random</span></div>
+                  <div class="seed-row">
+                    <input type="number" class="text-input" id="seed-input" placeholder="e.g. 42">
+                    <button class="icon-btn" id="btn-rand-seed" title="Random seed">
+                      <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M9 4l3 3-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </button>
+                    <button class="icon-btn" id="btn-lock-seed" title="Lock seed">
+                      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" id="lock-icon"><rect x="3" y="6" width="8" height="6" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M5 6V4.5a2 2 0 0 1 4 0V6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                    </button>
+                  </div>
+                  <div class="seed-display" id="seed-display"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-divider"></div>
+
+            <!-- Options -->
+            <div class="sidebar-section">
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <div class="toggle-label">Overnight mode</div>
+                  <div class="toggle-hint">Pauses between clips to keep GPU cool</div>
+                </div>
+                <label class="toggle">
+                  <input type="checkbox" id="overnight">
+                  <span class="track"><span class="thumb"></span></span>
+                </label>
+              </div>
+              <div class="clip-notice hidden" id="clip-notice" style="margin-top:8px"></div>
+            </div>
+
+          </div><!-- /sidebar-card -->
+
+          <!-- Actions — pinned outside the scrollable card -->
+          <div class="gen-actions">
+            <button class="secondary-btn" id="btn-queue">Add to queue</button>
+            <button class="primary-btn"   id="btn-generate">Generate</button>
+          </div>
+
+        </aside>
+
+        <!-- RIGHT: PREVIEW + TIMELINE -->
+        <div class="gen-right">
+
+          <!-- Video preview card -->
+          <div class="preview-card" id="preview-card">
+            <div class="preview-empty" id="preview-empty">
+              <div class="preview-empty-title">Ready to generate</div>
+              <div class="preview-empty-hint">Your video will appear here</div>
+            </div>
+
+            <video id="preview-video" class="preview-video hidden" playsinline></video>
+
+            <!-- Generating overlay -->
+            <div class="preview-overlay hidden" id="preview-overlay">
+              <div class="progress-inner">
+                <div class="progress-label" id="progress-phase">Generating</div>
+                <div class="progress-track"><div class="progress-fill" id="progress-bar"></div></div>
+                <div class="progress-meta">
+                  <span id="progress-sub">Starting...</span>
+                  <span id="progress-pct">0%</span>
+                </div>
+                <div class="progress-steps" id="progress-steps"></div>
+                <button class="cancel-btn" id="btn-cancel">Cancel</button>
+              </div>
+            </div>
+
+            <!-- Video controls overlay (shown when video loaded) -->
+            <div class="video-controls hidden" id="video-controls">
+              <div class="vc-top">
+                <span class="vc-name" id="vc-name"></span>
+                <div class="vc-top-actions">
+                  <button class="vc-btn" id="btn-open-output" title="Show in folder">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M11 9v3H3V9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M7 2v7m-2.5-2.5L7 9l2.5-2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="vc-bottom">
+                <div class="vc-timeline">
+                  <input type="range" class="timeline-scrubber" id="timeline-scrubber" min="0" max="100" value="0" step="0.1">
+                  <div class="timeline-waveform" id="timeline-waveform"></div>
+                </div>
+                <div class="vc-bar">
+                  <div class="vc-left">
+                    <button class="vc-btn" id="btn-skip-back" title="Skip back 5s">
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M11 3L5 7l6 4V3z" fill="currentColor"/><rect x="2" y="3" width="2" height="8" rx="1" fill="currentColor"/></svg>
+                    </button>
+                    <button class="vc-btn vc-play" id="btn-play" title="Play / Pause">
+                      <svg class="play-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M5 3l8 5-8 5V3z" fill="currentColor"/></svg>
+                      <svg class="pause-icon hidden" width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="4" y="3" width="3" height="10" rx="1" fill="currentColor"/><rect x="9" y="3" width="3" height="10" rx="1" fill="currentColor"/></svg>
+                    </button>
+                    <button class="vc-btn" id="btn-skip-fwd" title="Skip forward 5s">
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 3l6 4-6 4V3z" fill="currentColor"/><rect x="10" y="3" width="2" height="8" rx="1" fill="currentColor"/></svg>
+                    </button>
+                    <button class="vc-btn vc-loop-btn" id="btn-loop" title="Loop">
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7A5 5 0 0 1 7 2h2l-2-2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 7a5 5 0 0 1-5 5H5l2 2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </button>
+                  </div>
+                  <div class="vc-center">
+                    <span class="vc-time" id="vc-time">0:00</span>
+                    <span class="vc-sep">/</span>
+                    <span class="vc-dur" id="vc-dur">0:00</span>
+                  </div>
+                  <div class="vc-right">
+                    <button class="vc-btn" id="btn-fullscreen" title="Fullscreen">
+                      <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M2 5V2h3M12 5V2H9M2 9v3h3M12 9v3H9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Recent strip -->
+          <div class="recent-wrap">
+            <div class="recent-head">Recent outputs</div>
+            <div class="recent-row" id="recent-row">
+              <span class="recent-none">No outputs yet</span>
+            </div>
+          </div>
+
+        </div><!-- /gen-right -->
+      </div><!-- /gen-layout -->
+    </section>
+
+    <!-- ═══ QUEUE ══════════════════════════════════════════════════════════ -->
+    <section class="panel" id="panel-queue">
+      <div class="panel-head">
+        <div class="panel-title">Queue</div>
+        <div class="panel-actions">
+          <button class="secondary-btn" id="btn-clear-queue">Clear all</button>
+          <button class="primary-btn"   id="btn-start-queue">Start queue</button>
+        </div>
+      </div>
+      <div class="queue-box" id="queue-list">
+        <div class="empty-state">
+          <div class="empty-title">Queue is empty</div>
+          <div class="empty-hint">Add jobs from the Generate panel to run overnight</div>
+        </div>
+      </div>
+      <div class="queue-settings">
+        <div class="field">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-label">Auto-shutdown when done</div>
+              <div class="toggle-hint">Shut down PC after the queue completes</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="auto-shutdown">
+              <span class="track"><span class="thumb"></span></span>
+            </label>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label">Delay between clips <span class="field-val" id="delay-val">30 seconds</span></div>
+          <input type="range" class="slider" id="delay" min="0" max="120" value="30" step="5">
+          <div class="slider-ends"><span>0s</span><span>2 min</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ LIBRARY ════════════════════════════════════════════════════════ -->
+    <section class="panel" id="panel-library">
+      <div class="panel-head">
+        <div class="panel-title">Library</div>
+        <div class="panel-actions">
+          <div class="search-box">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 9.5l2.5 2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            <input type="text" class="search-input" id="library-search" placeholder="Search outputs...">
+          </div>
+          <select class="select" id="library-sort" style="width:auto;padding-right:28px">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="duration">By duration</option>
+          </select>
+        </div>
+      </div>
+      <div class="library-grid" id="library-grid">
+        <div class="empty-state">
+          <div class="empty-title">No outputs yet</div>
+          <div class="empty-hint">Generated videos will appear here</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ PROJECTS ═══════════════════════════════════════════════════════ -->
+    <section class="panel" id="panel-projects">
+      <div class="panel-head">
+        <div class="panel-title">Projects</div>
+        <button class="primary-btn" id="btn-new-project">New project</button>
+      </div>
+      <div class="card-grid" id="projects-grid">
+        <div class="empty-state">
+          <div class="empty-title">No projects yet</div>
+          <div class="empty-hint">Projects organise your generations into folders</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ CHARACTERS ══════════════════════════════════════════════════════ -->
+    <section class="panel" id="panel-characters">
+      <div class="panel-head">
+        <div class="panel-title">Characters</div>
+        <button class="primary-btn" id="btn-new-char">New character</button>
+      </div>
+      <div class="card-grid" id="chars-grid">
+        <div class="empty-state">
+          <div class="empty-title">No characters saved</div>
+          <div class="empty-hint">Save reusable character descriptions to inject into any prompt</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ DIAGNOSTICS ════════════════════════════════════════════════════ -->
+    <section class="panel" id="panel-diagnostics">
+      <div class="panel-head">
+        <div class="panel-title">Diagnostics</div>
+        <button class="secondary-btn" id="btn-run-diag">Run checks</button>
+      </div>
+      <div class="diag-grid" id="diag-grid">
+        <div class="empty-state"><div class="empty-hint">Click "Run checks" to start</div></div>
+      </div>
+      <div class="log-card">
+        <div class="field-label" style="margin-bottom:10px">System log</div>
+        <div class="log-output" id="diag-log"></div>
+      </div>
+    </section>
+
+    <!-- ═══ SETTINGS ══════════════════════════════════════════════════════ -->
+    <section class="panel" id="panel-settings">
+      <div class="panel-head">
+        <div class="panel-title">Settings</div>
+        <button class="primary-btn" id="btn-save-settings">Save changes</button>
+      </div>
+
+      <div class="settings-layout">
+        <div class="settings-group">
+          <div class="settings-group-title">Output</div>
+          <div class="section-card">
+            <div class="section-inner">
+              <div class="field">
+                <div class="field-label">Output folder</div>
+                <div class="path-row">
+                  <input type="text" class="text-input flex1" id="setting-output-dir" placeholder="/Users/you/Videos/FSV">
+                  <button class="secondary-btn" id="btn-browse-output">Browse</button>
+                </div>
+              </div>
+              <div class="field">
+                <div class="field-label">Default resolution</div>
+                <select class="select" id="setting-default-res">
+                  <option value="512x512">512 × 512</option>
+                  <option value="768x512">768 × 512</option>
+                  <option value="768x768">768 × 768</option>
+                  <option value="1280x720" selected>1280 × 720 HD</option>
+                </select>
+              </div>
+              <div class="field">
+                <div class="field-label">Default FPS</div>
+                <select class="select" id="setting-default-fps">
+                  <option value="12">12 fps</option>
+                  <option value="24" selected>24 fps</option>
+                  <option value="30">30 fps</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">GPU &amp; Performance</div>
+          <div class="section-card">
+            <div class="section-inner">
+              <div class="field">
+                <div class="field-label">GPU memory limit <span class="field-val" id="vram-val">8 GB</span></div>
+                <input type="range" class="slider" id="setting-vram" min="2" max="24" value="8" step="1">
+                <div class="slider-ends"><span>2 GB</span><span>24 GB</span></div>
+              </div>
+              <div class="field">
+                <div class="field-label">Attention mode</div>
+                <select class="select" id="setting-attn">
+                  <option value="sdpa" selected>SDPA (default)</option>
+                  <option value="flash">Flash Attention 2</option>
+                  <option value="xformers">xFormers</option>
+                </select>
+              </div>
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <div class="toggle-label">CPU offload</div>
+                  <div class="toggle-hint">Offload model weights to RAM when idle</div>
+                </div>
+                <label class="toggle">
+                  <input type="checkbox" id="setting-cpu-offload">
+                  <span class="track"><span class="thumb"></span></span>
+                </label>
+              </div>
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <div class="toggle-label">FP8 quantisation</div>
+                  <div class="toggle-hint">Reduces VRAM usage, slight quality drop</div>
+                </div>
+                <label class="toggle">
+                  <input type="checkbox" id="setting-fp8">
+                  <span class="track"><span class="thumb"></span></span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Interface</div>
+          <div class="section-card">
+            <div class="section-inner">
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <div class="toggle-label">Show generation details</div>
+                  <div class="toggle-hint">Display step count and phase during generation</div>
+                </div>
+                <label class="toggle">
+                  <input type="checkbox" id="setting-show-steps" checked>
+                  <span class="track"><span class="thumb"></span></span>
+                </label>
+              </div>
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <div class="toggle-label">Auto-play on complete</div>
+                  <div class="toggle-hint">Automatically play video when generation finishes</div>
+                </div>
+                <label class="toggle">
+                  <input type="checkbox" id="setting-autoplay" checked>
+                  <span class="track"><span class="thumb"></span></span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ══ CHARACTER MODAL ════════════════════════════════════════════════════ -->
+  <div class="modal-bg hidden" id="char-modal">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title" id="modal-title">New Character</div>
+        <button class="modal-close-btn" id="modal-close">Close</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <div class="field-label">Name</div>
+          <input type="text" class="text-input" id="char-name" placeholder="e.g. Cyberpunk Detective">
+        </div>
+        <div class="field">
+          <div class="field-label">Description</div>
+          <textarea class="textarea" id="char-desc" rows="4"
+            placeholder="Describe appearance, clothing, setting, mood..."></textarea>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="secondary-btn" id="modal-cancel">Cancel</button>
+        <button class="primary-btn"   id="modal-save">Save character</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ CHARACTER PICKER POPOVER ═══════════════════════════════════════════ -->
+  <div class="popover hidden" id="char-picker">
+    <div class="popover-head">Insert character</div>
+    <div class="popover-list" id="char-picker-list">
+      <div class="popover-empty">No characters saved yet</div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

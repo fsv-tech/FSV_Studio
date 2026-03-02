@@ -1,0 +1,44 @@
+{
+  "presets": [
+    {
+      "id": "cinematic",
+      "label": "Cinematic",
+      "modifier": "35mm film, dramatic lighting, anamorphic lens, high dynamic range, cinematic color grade"
+    },
+    {
+      "id": "anime",
+      "label": "Anime",
+      "modifier": "cel shaded, vibrant colors, Japanese animation style, clean lines"
+    },
+    {
+      "id": "documentary",
+      "label": "Documentary",
+      "modifier": "natural lighting, handheld realism, muted tones, observational camera work"
+    },
+    {
+      "id": "cyberpunk",
+      "label": "Cyberpunk",
+      "modifier": "neon lights, rain-soaked streets, high contrast, dystopian atmosphere"
+    },
+    {
+      "id": "nature",
+      "label": "Nature",
+      "modifier": "macro photography, golden hour, nature documentary, BBC Earth style"
+    },
+    {
+      "id": "scifi",
+      "label": "Sci-Fi",
+      "modifier": "futuristic, clean design, space, epic scale, high tech environment"
+    },
+    {
+      "id": "horror",
+      "label": "Horror",
+      "modifier": "dark atmosphere, unsettling, low key lighting, building tension"
+    },
+    {
+      "id": "abstract",
+      "label": "Abstract",
+      "modifier": "abstract art, fluid motion, geometric shapes, vivid color palette"
+    }
+  ]
+}

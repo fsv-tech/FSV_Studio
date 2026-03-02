@@ -1,0 +1,8 @@
+{
+  "version":    "1.0.0",
+  "pythonPath": null,
+  "modelsDir":  "models/ltx-2",
+  "outputsDir": "jobs",
+  "ffmpegPath": "ffmpeg",
+  "theme":      "light"
+}
