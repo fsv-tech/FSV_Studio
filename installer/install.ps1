@@ -1,4 +1,5 @@
 # FSV Studio - Windows Installer
+# Uses system-installed Python (whatever "python" resolves to)
 
 $ErrorActionPreference = "Stop"
 $Host.UI.RawUI.WindowTitle = "FSV Studio Installer"
@@ -14,64 +15,70 @@ $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
 $VenvPip    = Join-Path $VenvDir "Scripts\pip.exe"
 
 function Write-Step($msg) { Write-Host ""; Write-Host "  >> $msg" -ForegroundColor Cyan }
-function Write-OK($msg)   { Write-Host "  OK  $msg" -ForegroundColor Green }
+function Write-OK($msg)   { Write-Host "  OK   $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "  WARN  $msg" -ForegroundColor Yellow }
 function Write-Fail($msg) { Write-Host "  FAIL  $msg" -ForegroundColor Red }
 
 Clear-Host
 Write-Host ""
-Write-Host "  FSV Studio - First-Time Setup"
+Write-Host "  ============================================"
+Write-Host "    FSV Studio - First-Time Setup"
+Write-Host "  ============================================"
 Write-Host ""
 Read-Host "  Press Enter to start"
 
 # ============================================================
-# Python Check
+# Step 1 - Check Python
 # ============================================================
 
-Write-Step "Checking Python 3.11"
+Write-Step "Checking Python installation"
 
-$py311Found = $false
 try {
-    $ver = & py -3.11 --version 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        Write-OK "Python 3.11 found: $ver"
-        $py311Found = $true
-    }
-} catch {}
-
-if (-not $py311Found) {
-    Write-Fail "Python 3.11 not found. Please install it manually."
+    $ver = & python --version 2>&1
+    if ($LASTEXITCODE -ne 0) { throw }
+    Write-OK "Using $ver"
+}
+catch {
+    Write-Fail "Python not found in PATH."
+    Write-Host "Install Python and ensure 'Add Python to PATH' is enabled."
     exit 1
 }
 
 # ============================================================
-# Create venv
+# Step 2 - Create Virtual Environment
 # ============================================================
 
 Write-Step "Creating virtual environment"
 
 if (-not (Test-Path $VenvDir)) {
-    & py -3.11 -m venv $VenvDir
-    Write-OK "venv created"
+    & python -m venv $VenvDir
+    Write-OK "Virtual environment created"
 } else {
-    Write-OK "venv already exists"
+    Write-OK "Virtual environment already exists"
 }
 
 & $VenvPython -m pip install --upgrade pip
 
 # ============================================================
-# Install PyTorch
+# Step 3 - Install PyTorch (CPU version for max compatibility)
 # ============================================================
 
-Write-Step "Installing PyTorch"
-& $VenvPip install torch torchvision torchaudio
-Write-OK "PyTorch installed"
+Write-Step "Installing PyTorch (CPU build)"
+
+try {
+    & $VenvPip install torch torchvision torchaudio
+    Write-OK "PyTorch installed"
+}
+catch {
+    Write-Fail "PyTorch install failed."
+    exit 1
+}
 
 # ============================================================
-# Install dependencies
+# Step 4 - Install AI Dependencies
 # ============================================================
 
-Write-Step "Installing dependencies"
+Write-Step "Installing AI dependencies"
 
 $deps = @(
     "diffusers",
@@ -91,29 +98,56 @@ foreach ($dep in $deps) {
     & $VenvPip install $dep
 }
 
-Write-OK "Dependencies installed"
+Write-OK "All dependencies installed"
 
 # ============================================================
-# Download Model
+# Step 5 - Prepare Model Directory
 # ============================================================
 
-Write-Step "Checking model folder"
+Write-Step "Preparing model directory"
 
 New-Item -ItemType Directory -Force -Path $ModelsDir | Out-Null
 
 $existingFiles = Get-ChildItem $ModelsDir -Filter "*.safetensors" -ErrorAction SilentlyContinue
 
 if ($existingFiles -and $existingFiles.Count -gt 0) {
-    Write-OK ("Model already downloaded ({0} files found)" -f $existingFiles.Count)
-} else {
-    Write-Warn "Model not found. Download manually from HuggingFace."
+    Write-OK ("Model already present ({0} files found)" -f $existingFiles.Count)
+}
+else {
+    Write-Warn "No model files found."
+    Write-Host "Download LTX-2 manually from HuggingFace and place files in:"
+    Write-Host "  $ModelsDir"
 }
 
 # ============================================================
-# Write config.json SAFELY
+# Step 6 - Install FFmpeg (optional check)
 # ============================================================
 
-Write-Step "Writing config"
+Write-Step "Checking FFmpeg"
+
+$ffmpegLocal = Join-Path $BinDir "ffmpeg.exe"
+
+if (Test-Path $ffmpegLocal) {
+    Write-OK "FFmpeg found locally"
+}
+else {
+    try {
+        & ffmpeg -version 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-OK "FFmpeg available on PATH"
+        }
+    }
+    catch {
+        Write-Warn "FFmpeg not found."
+        Write-Host "Install from https://ffmpeg.org/download.html and add to PATH."
+    }
+}
+
+# ============================================================
+# Write config.json safely
+# ============================================================
+
+Write-Step "Writing configuration file"
 
 New-Item -ItemType Directory -Force -Path (Split-Path $ConfigFile) | Out-Null
 
@@ -128,12 +162,15 @@ $configObject = @{
 
 $configObject | ConvertTo-Json -Depth 3 | Set-Content $ConfigFile -Encoding UTF8
 
-Write-OK "Config saved"
+Write-OK "Config saved to config\config.json"
 
 # ============================================================
 # Done
 # ============================================================
 
 Write-Host ""
-Write-Host "Setup complete!"
+Write-Host "  ============================================" -ForegroundColor Green
+Write-Host "    Setup complete!" -ForegroundColor Green
+Write-Host "  ============================================" -ForegroundColor Green
+Write-Host ""
 Read-Host "Press Enter to close"
